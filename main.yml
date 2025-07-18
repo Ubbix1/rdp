@@ -1,0 +1,55 @@
+name: RDP via Free Tunnel Services
+on: [push, workflow_dispatch]
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+    # Option 1: Using bore.pub (completely free)
+    - name: Download Bore
+      run: |
+        # Try direct download URLs for different versions
+        $urls = @(
+          "https://github.com/ekzhang/bore/releases/download/v0.5.3/bore-v0.5.3-x86_64-pc-windows-msvc.zip",
+          "https://github.com/ekzhang/bore/releases/download/v0.5.2/bore-v0.5.2-x86_64-pc-windows-msvc.zip",
+          "https://github.com/ekzhang/bore/releases/download/v0.5.1/bore-v0.5.1-x86_64-pc-windows-msvc.zip",
+          "https://github.com/ekzhang/bore/releases/download/v0.5.0/bore-v0.5.0-x86_64-pc-windows-msvc.zip"
+        )
+        
+        $downloaded = $false
+        foreach ($url in $urls) {
+          try {
+            Write-Host "Trying: $url"
+            Invoke-WebRequest $url -OutFile bore.zip -ErrorAction Stop
+            $downloaded = $true
+            Write-Host "Successfully downloaded from: $url"
+            break
+          } catch {
+            Write-Host "Failed: $($_.Exception.Message)"
+          }
+        }
+        
+        if (-not $downloaded) {
+          throw "All Bore download attempts failed"
+        }
+    
+    - name: Extract Bore
+      run: Expand-Archive bore.zip -DestinationPath .
+    
+    - name: Enable Remote Desktop and Firewall
+      run: |
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
+        Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
+        Set-LocalUser -Name "runneradmin" -Password (ConvertTo-SecureString -AsPlainText "P@ssw0rd!" -Force)
+    
+    - name: Start Bore Tunnel
+      run: |
+        # Start bore tunnel (completely free, no registration needed)
+        Start-Process -FilePath ".\bore.exe" -ArgumentList "local", "3389", "--to", "bore.pub" -NoNewWindow -PassThru
+        Write-Host "RDP tunnel started via bore.pub"
+        Write-Host "Connect to: bore.pub:ASSIGNED_PORT (check logs for port)"
+        Write-Host "Username: runneradmin"
+        Write-Host "Password: P@ssw0rd!"
+        # Keep running for 6 hours
+        Start-Sleep -Seconds 21600
+      timeout-minutes: 360
